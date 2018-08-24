@@ -1,0 +1,284 @@
+#########################################################################################################
+#
+# Configuration files (.env)
+#
+#########################################################################################################
+apiVersion: v1
+data:
+  .env: |-
+    APP_ENV=local
+    APP_KEY=base64:WCDTC2FtVPSdejdoqK2kop4YfuiyMyCCt7ut0GAuQPw=
+    APP_DEBUG=false
+    APP_LOG_LEVEL=debug
+    APP_URL=https://myapp.com
+    APP_IO_URL=https://node.myapp.com
+    APP_IO_PORT=3000
+    APP_LOG=errorlog
+    #SENTRY_DSN=
+
+    DB_CONNECTION=mysql
+    DB_HOST=127.0.0.1
+    DB_PORT=3306
+    DB_DATABASE=myapp
+    DB_USERNAME=myapp
+    DB_PASSWORD=secret
+    DB_DATABASE_TABLE_PREFIX=
+
+    CACHE_DRIVER=redis
+    BROADCAST_DRIVER=redis
+    SESSION_DRIVER=redis
+    QUEUE_DRIVER=sync
+
+    REDIS_HOST=vehement-unicorn-redis-master
+    REDIS_PASSWORD=xxxxxxx
+    REDIS_PORT=6379
+    REDIS_TIMEOUT=2
+
+    MAIL_DRIVER=mailgun
+    MAIL_HOST=127.0.0.1
+    MAIL_PORT=25
+    MAIL_USERNAME=null
+    MAIL_PASSWORD=null
+    MAIL_ENCRYPTION=null
+
+    MAIL_FROM="do-no-reply@mailgun.myapp.com"
+    MAILGUN_SECRET="key-xxxxxxxxxxxx"
+    MAILGUN_DOMAIN="mailgun.myapp.com"
+kind: ConfigMap
+metadata:
+  name: myapp-conf
+  namespace: default
+---
+#########################################################################################################
+#
+# SSL Certicates and Issuer
+#
+#########################################################################################################
+apiVersion: certmanager.k8s.io/v1alpha1
+kind: Issuer
+metadata:
+  name: myapp-issuer
+  namespace: default
+spec:
+  acme:
+    # The ACME server URL
+    #server: https://acme-staging-v02.api.letsencrypt.org/directory
+    server: https://acme-v02.api.letsencrypt.org/directory
+    # Email address used for ACME registration
+    email: support@myapp.com
+    # Name of a secret used to store the ACME account private key
+    privateKeySecretRef:
+      name: myapp-issuer
+    # Enable the HTTP-01 challenge provider
+    http01: {}
+---
+apiVersion: certmanager.k8s.io/v1alpha1
+kind: Certificate
+metadata:
+  name: myapp-cert
+  namespace: default
+spec:
+  secretName: myapp-tls
+  issuerRef:
+    name: myapp-issuer
+  commonName: myapp.com
+  dnsNames:
+  - node.myapp.com
+  - www.myapp.com
+  acme:
+    config:
+    - http01:
+        ingress: myapp-ingress
+      domains:
+      - myapp.com
+    - http01:
+        ingress: myapp-ingress
+      domains:
+      - www.myapp.com
+    - http01:
+        ingress: myapp-ingress
+      domains:
+      - node.myapp.com
+---
+#########################################################################################################
+#
+# Ingress rules
+#
+#########################################################################################################
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  annotations:
+    kubernetes.io/ingress.global-static-ip-name: "cluster-static-ip"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  name: myapp-ingress
+#  namespace: foo
+spec:
+  tls:
+  - hosts:
+    - myapp.com
+    - node.myapp.com
+    secretName: myapp-tls
+  backend:
+    serviceName: myapp-web-svc
+    servicePort: 80
+  rules:
+    - host: myapp.com
+      http:
+        paths:
+          - backend:
+              serviceName: myapp-web-svc
+              servicePort: 80
+    - host: node.myapp.com
+      http:
+        paths:
+          - backend:
+              serviceName: myapp-nodejs-svc
+              servicePort: 3000
+---
+#########################################################################################################
+#
+# WEB
+# - service: port 80 (NodePort for GKE LoadBalancing)
+# - pod:
+#   1. myapp
+#   2. cloudsql-docker/gce-proxy to access Cloud SQL (instances and credential_file params)
+#
+#########################################################################################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-web-svc
+  labels:
+    app: myapp-web
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: myapp-web
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: myapp-web-deployment
+spec:
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: myapp-web
+    spec:
+      containers:
+      - name: myapp-web-pod
+        image: registry.gitlab.com/myteam/myapp:staging
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - mountPath: /var/www/html/.env
+          name: config
+          subPath: .env
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          timeoutSeconds: 15
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          timeoutSeconds: 15
+      - name: cloudsql-proxy
+        image: gcr.io/cloudsql-docker/gce-proxy:1.11
+        command: ["/cloud_sql_proxy",
+                  "-instances=myteam-production:europe-west1:db-mysql=tcp:3306",
+                  "-credential_file=/secrets/cloudsql/credentials.json"]
+        volumeMounts:
+          - name: cloudsql-instance-credentials
+            mountPath: /secrets/cloudsql
+            readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: myapp-conf
+            items:
+            - key: .env
+              path: .env
+        - name: cloudsql-instance-credentials
+          secret:
+            secretName: cloudsql-instance-credentials
+
+      imagePullSecrets:
+      - name: myteam-gitlab
+---
+#########################################################################################################
+#
+# Service Node.JS
+#
+#########################################################################################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-nodejs-svc
+  labels:
+    app: myapp-nodejs
+spec:
+  sessionAffinity: ClientIP
+  # https://stackoverflow.com/questions/40743432/google-container-engine-kubernetes-websocket-socket-io-not-working-on-multi
+  #type: LoadBalancer
+  type: NodePort
+  ports:
+  - port: 3000
+    targetPort: 3000
+  selector:
+    app: myapp-nodejs
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: myapp-nodejs-deployment
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: myapp-nodejs
+    spec:
+      containers:
+      - name: myapp-nodejs-pod
+        image: registry.gitlab.com/myteam/myapp:staging
+        imagePullPolicy: Always
+        command: ["./eventjs.sh"]
+        ports:
+        - containerPort: 3000
+        volumeMounts:
+        - mountPath: /var/www/html/.env
+          name: config
+          subPath: .env
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          timeoutSeconds: 15
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          timeoutSeconds: 15
+      volumes:
+        - name: config
+          configMap:
+            name: myapp-conf
+            items:
+            - key: .env
+              path: .env
+
+      imagePullSecrets:
+      - name: myteam-gitlab

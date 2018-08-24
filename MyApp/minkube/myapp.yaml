@@ -1,0 +1,127 @@
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: myapp-tls
+#   namespace: foo
+# data:
+#   tls.crt: <base64 encoded cert>
+#   tls.key: <base64 encoded key>
+# type: kubernetes.io/tls
+# ---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  name: myapp-ingress
+#  namespace: foo
+spec:
+  rules:
+    - host: www.myapp.com
+      http:
+        paths:
+          - backend:
+              serviceName: myapp-web-svc
+              servicePort: 80
+            path: /
+  # # This section is only required if TLS is to be enabled for the Ingress
+  # tls:
+  #     - hosts:
+  #         - www.myapp.com
+  #       secretName: myapp-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-web-svc
+  labels:
+    app: myapp-web
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: myapp-web
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: myapp-web-deployment
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: myapp-web
+    spec:
+      containers:
+      - name: myapp-web-pod
+        image: registry.gitlab.com/myteam/myapp:latest
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - mountPath: /var/www/html/.env
+          name: config
+          subPath: .env
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 1
+          timeoutSeconds: 1
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 1
+          timeoutSeconds: 1
+      volumes:
+        - name: config
+          configMap:
+            name: myapp-env
+            items:
+            - key: .env
+              path: .env
+
+      imagePullSecrets:
+      - name: myteam-gitlab
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-db-svc
+  labels:
+    app: myapp-db
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: myapp-db
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: myapp-db-deployment
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: myapp-db
+    spec:
+      containers:
+        - name: myapp-db-pod
+          image: percona:5.7
+          env:
+          - name: MYSQL_ROOT_PASSWORD
+            value: secret
+          - name: MYSQL_DATABASE
+            value: myapp
+          - name: MYSQL_USER
+            value: myapp
+          - name: MYSQL_PASSWORD
+            value: secret
+          ports:
+          - containerPort: 3306
+
+
