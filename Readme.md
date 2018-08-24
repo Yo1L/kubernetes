@@ -10,7 +10,7 @@ Here a basic walk-through to make your app works:
 1. Database : Create or Select one
 2. Cluster : Create or Select one
 3. Docker Registry Secret : Register your Docker Private Registry if needed
-4. CongigMaps : Create your Configuration (Laravel .env)
+4. ConfigMaps : Create your Configuration (Laravel .env)
 5. YAML (Deploy, Service...)
 6. Ingress
 
