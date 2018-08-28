@@ -11,7 +11,10 @@ data:
     APP_DEBUG=false
     APP_LOG_LEVEL=debug
     APP_URL=https://myapp.com
+    APP_IO_URL=https://node.myapp.com
+    APP_IO_PORT=3000
     APP_LOG=errorlog
+    #SENTRY_DSN=
 
     DB_CONNECTION=mysql
     DB_HOST=127.0.0.1
@@ -80,6 +83,7 @@ spec:
     name: myapp-issuer
   commonName: myapp.com
   dnsNames:
+  - node.myapp.com
   - www.myapp.com
   acme:
     config:
@@ -93,6 +97,8 @@ spec:
       - www.myapp.com
     - http01:
         ingress: myapp-ingress
+      domains:
+      - node.myapp.com
 ---
 #########################################################################################################
 #
@@ -112,6 +118,7 @@ spec:
   tls:
   - hosts:
     - myapp.com
+    - node.myapp.com
     secretName: myapp-tls
   backend:
     serviceName: myapp-web-svc
@@ -123,6 +130,12 @@ spec:
           - backend:
               serviceName: myapp-web-svc
               servicePort: 80
+    - host: node.myapp.com
+      http:
+        paths:
+          - backend:
+              serviceName: myapp-nodejs-svc
+              servicePort: 3000
 ---
 #########################################################################################################
 #
@@ -201,4 +214,71 @@ spec:
             secretName: cloudsql-instance-credentials
 
       imagePullSecrets:
-      s name: myteam-gitlab
+      - name: myteam-gitlab
+---
+#########################################################################################################
+#
+# Service Node.JS
+#
+#########################################################################################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-nodejs-svc
+  labels:
+    app: myapp-nodejs
+spec:
+  sessionAffinity: ClientIP
+  # https://stackoverflow.com/questions/40743432/google-container-engine-kubernetes-websocket-socket-io-not-working-on-multi
+  #type: LoadBalancer
+  type: NodePort
+  ports:
+  - port: 3000
+    targetPort: 3000
+  selector:
+    app: myapp-nodejs
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: myapp-nodejs-deployment
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: myapp-nodejs
+    spec:
+      containers:
+      - name: myapp-nodejs-pod
+        image: registry.gitlab.com/myteam/myapp:staging
+        imagePullPolicy: Always
+        command: ["./eventjs.sh"]
+        ports:
+        - containerPort: 3000
+        volumeMounts:
+        - mountPath: /var/www/html/.env
+          name: config
+          subPath: .env
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          timeoutSeconds: 15
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          timeoutSeconds: 15
+      volumes:
+        - name: config
+          configMap:
+            name: myapp-conf
+            items:
+            - key: .env
+              path: .env
+
+      imagePullSecrets:
+      - name: myteam-gitlab
