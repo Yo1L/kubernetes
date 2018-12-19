@@ -295,6 +295,27 @@ In the directory containing your values.yaml
 helm install --name gitlab-runner -f ./values.yaml gitlab/gitlab-runner
 ```
 
+Create a gitlab user to access your cluster for deploy purposes :
+```
+kubectl apply -f gitlab-user.yml
+```
+
+List secrets in the right namespace and search for a gitlab-token-XXXX (where X are replaced with random chars):
+```
+kubectl get secret -n gitlab-managed-apps
+```
+
+Then to get your token (replace X with the right chars):
+```
+kubectl describe secret -n gitlab-managed-apps gitlab-token-XXXX
+```
+Copy and paste only chars after "token:"
+
+To retrieve your cluster Kubernetes master url:
+```
+kubectl cluster-info
+```
+
 ### Setup MySQL Database
 
 Create a volume claim for your database
@@ -313,13 +334,14 @@ To connect to mysql database, you'll need the pod name (tab completion or kubect
 kubetctl exec -it database-mysql-xxxxxx -- mysql -p
 ```
 
-### Setup for Gitlab
+### Private Docker Registy Secret for Gitlab-Runner
 
-#### GitLab CI temporary token
-Each pipeline create a secret with the temporary token to deploy.
+#### Dynamic GitLab CI secret token
+Each pipeline create a secret with the temporary token to deploy so a good way is to create a secret on the fly and references it in your imagePullSecrets.
 
-#### Docker Private Registry Secret: myteam-gitlab
-We need to store the credentials of gitlab in our cluster, the secret will be labeled "myteam-gitlab" and can be used by any project.
+
+#### Static GitLab CI secret token
+If you need to store the credentials of gitlab in our cluster, the secret will be labeled "myteam-gitlab" and can be used by any project.
 
 We only need to create it a the very first initialization of the cluster (only the first time), so check whether this secret is not already set:
 ```
