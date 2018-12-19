@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  creationTimestamp: null
+  name: gitlab-managed-apps
+spec: {}
+status: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gitlab
+  namespace: gitlab-managed-apps
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gitlab-sa
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: gitlab
+  namespace: gitlab-managed-apps
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: kubernetes
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gitlab-binding
+  namespace: gitlab-managed-apps
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+subjects:
+- kind: ServiceAccount
+  name: gitlab
+  namespace: gitlab-managed-apps
+- kind: ServiceAccount
+  name: default
+  namespace: gitlab-managed-apps

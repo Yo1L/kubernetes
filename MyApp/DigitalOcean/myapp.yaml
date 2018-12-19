@@ -26,7 +26,7 @@ data:
     SESSION_DRIVER=redis
     QUEUE_DRIVER=sync
 
-    REDIS_HOST=vehement-unicorn-redis-master
+    REDIS_HOST=cache-redis-master
     REDIS_PASSWORD=xxxxxxx
     REDIS_PORT=6379
     REDIS_TIMEOUT=2
@@ -201,4 +201,4 @@ spec:
             secretName: cloudsql-instance-credentials
 
       imagePullSecrets:
-      - name: kompetentia-gitlab
+      s name: myteam-gitlab

@@ -98,7 +98,7 @@ kubectl delete -f myapp.conf
 kubectl apply -f myapp.conf
 ```
 
-Another solution is to create a new configuration map (new name) and modify your deployments accordingly like you do in docker stack with your configs...
+Another solution is to create a new configuration map (new name) and modify your deployments accordingly like you'll do in docker stack with your configs...
 
 #### Export to yaml
 ```

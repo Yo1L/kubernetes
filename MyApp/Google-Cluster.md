@@ -330,7 +330,7 @@ metadata:
   name: myapp-cert
   namespace: default
 spec:
-  secretName: myapp-tls
+  secretName: letsencrypt-issuer-staging
   issuerRef:
     name: myapp-issuer
   commonName: myapp.com
