@@ -1,5 +1,5 @@
 # Introduction
-Here are the notes of my understanding of Kubernetes and their sources
+Here are the notes of my understanding of Kubernetes and their sources.
 
 # How To
 
@@ -27,7 +27,7 @@ Here a basic walk-through to make your app works:
 
 # Kubernetes 101
 
-Here some basics commands
+Here are some basics commands.
 
 ## GET Cluster IP of a service
 ```
